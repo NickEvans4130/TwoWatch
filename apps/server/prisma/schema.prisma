@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id         String      @id @default(cuid())
+  email      String      @unique
+  name       String?
+  createdAt  DateTime    @default(now())
+  coupleA    Couple[]    @relation("UserA")
+  coupleB    Couple[]    @relation("UserB")
+  magicLinks MagicLink[]
+}
+
+model Couple {
+  id          String          @id @default(cuid())
+  inviteCode  String          @unique @default(cuid())
+  userAId     String
+  userBId     String?
+  createdAt   DateTime        @default(now())
+  userA       User            @relation("UserA", fields: [userAId], references: [id])
+  userB       User?           @relation("UserB", fields: [userBId], references: [id])
+  watchlist   WatchlistItem[]
+  rooms       Room[]
+}
+
+model WatchlistItem {
+  id         String          @id @default(cuid())
+  coupleId   String
+  tmdbId     String
+  imdbId     String
+  mediaType  String
+  title      String
+  posterPath String?
+  addedAt    DateTime        @default(now())
+  couple     Couple          @relation(fields: [coupleId], references: [id])
+  progress   WatchProgress[]
+}
+
+model WatchProgress {
+  id              String        @id @default(cuid())
+  watchlistItemId String
+  season          Int?
+  episode         Int?
+  watchedAt       DateTime      @default(now())
+  completedBy     String
+  item            WatchlistItem @relation(fields: [watchlistItemId], references: [id])
+}
+
+model Room {
+  id        String   @id @default(cuid())
+  coupleId  String
+  tmdbId    String
+  imdbId    String
+  mediaType String
+  season    Int?
+  episode   Int?
+  createdAt DateTime @default(now())
+  couple    Couple   @relation(fields: [coupleId], references: [id])
+}
+
+model MagicLink {
+  id        String   @id @default(cuid())
+  token     String   @unique @default(cuid())
+  userId    String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  user      User     @relation(fields: [userId], references: [id])
+}
