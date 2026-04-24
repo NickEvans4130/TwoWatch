@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+*.db
+*.db-journal
+apps/server/src/generated/
+apps/web/dist/
