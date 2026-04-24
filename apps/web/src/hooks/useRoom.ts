@@ -24,7 +24,12 @@ export function useRoom(roomId: string, userId: string, token: string) {
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
 
+  // Don't open the socket until we have a real userId and token
+  const ready = Boolean(roomId && userId && token);
+
   useEffect(() => {
+    if (!ready) return;
+
     const socket = io(SOCKET_URL, { transports: ['websocket'] });
     socketRef.current = socket;
 
@@ -61,7 +66,7 @@ export function useRoom(roomId: string, userId: string, token: string) {
       clearInterval(heartbeat);
       socket.disconnect();
     };
-  }, [roomId, userId, token]);
+  }, [roomId, userId, token, ready]);
 
   const setReady = useCallback((ready: boolean) => {
     const socket = socketRef.current;

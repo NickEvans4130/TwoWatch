@@ -6,14 +6,6 @@ import { requireAuth, AuthRequest } from '../middleware/auth';
 const router = Router();
 
 router.post('/create', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
-  const existing = await prisma.couple.findFirst({
-    where: { OR: [{ userAId: req.user!.userId }, { userBId: req.user!.userId }] },
-  });
-  if (existing) {
-    res.status(400).json({ error: 'Already in a couple', code: 'ALREADY_COUPLED' });
-    return;
-  }
-
   const couple = await prisma.couple.create({ data: { userAId: req.user!.userId } });
   res.json({ couple, inviteCode: couple.inviteCode });
 });
@@ -24,14 +16,6 @@ router.post('/join', requireAuth, async (req: AuthRequest, res: Response): Promi
   const parsed = joinSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid request' });
-    return;
-  }
-
-  const existing = await prisma.couple.findFirst({
-    where: { OR: [{ userAId: req.user!.userId }, { userBId: req.user!.userId }] },
-  });
-  if (existing) {
-    res.status(400).json({ error: 'Already in a couple', code: 'ALREADY_COUPLED' });
     return;
   }
 
@@ -58,20 +42,17 @@ router.post('/join', requireAuth, async (req: AuthRequest, res: Response): Promi
 });
 
 router.get('/me', requireAuth, async (req: AuthRequest, res: Response): Promise<void> => {
-  const couple = await prisma.couple.findFirst({
+  const couples = await prisma.couple.findMany({
     where: { OR: [{ userAId: req.user!.userId }, { userBId: req.user!.userId }] },
     include: {
       userA: { select: { id: true, email: true, name: true } },
       userB: { select: { id: true, email: true, name: true } },
       _count: { select: { watchlist: true } },
     },
+    orderBy: { createdAt: 'desc' },
   });
 
-  if (!couple) {
-    res.json({ couple: null });
-    return;
-  }
-  res.json({ couple });
+  res.json({ couples });
 });
 
 export default router;

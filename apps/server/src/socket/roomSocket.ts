@@ -114,8 +114,11 @@ export function setupSocket(io: Server) {
         const isUserA = couple.userAId === userId;
         const isUserB = couple.userBId === userId;
 
+        console.log(`[room] join_room roomId=${roomId} userId=${userId} isUserA=${isUserA} isUserB=${isUserB} coupleUserB=${couple.userBId ?? 'null'}`);
+
         if (!isUserA && !isUserB) {
-          socket.emit('error', { message: 'Not authorized for this room' });
+          console.log(`[room] rejected: user ${userId} not in couple ${couple.id}`);
+          socket.emit('error', { message: 'Not authorized for this room — make sure both accounts are in the same couple' });
           return;
         }
 

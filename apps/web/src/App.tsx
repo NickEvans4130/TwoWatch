@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
@@ -10,6 +10,8 @@ import WatchRoom from './pages/WatchRoom';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore();
+  const location = useLocation();
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen" style={{ background: 'var(--bg-primary)' }}>
@@ -17,7 +19,10 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) {
+    localStorage.setItem('tw_redirect', location.pathname);
+    return <Navigate to="/login" replace />;
+  }
   return <>{children}</>;
 }
 

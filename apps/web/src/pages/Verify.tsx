@@ -24,7 +24,9 @@ export default function Verify() {
     api.get<VerifyResponse>(`/api/auth/verify?token=${token}`)
       .then((res) => {
         setAuth(res.token, res.user);
-        navigate('/dashboard', { replace: true });
+        const redirect = localStorage.getItem('tw_redirect') || '/dashboard';
+        localStorage.removeItem('tw_redirect');
+        navigate(redirect, { replace: true });
       })
       .catch((err) => {
         setError(err instanceof Error ? err.message : 'Invalid or expired link');

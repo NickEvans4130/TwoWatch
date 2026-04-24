@@ -35,3 +35,21 @@ const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+httpServer.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use. Run: lsof -i :${PORT} -t | xargs kill -9`);
+    process.exit(1);
+  } else {
+    throw err;
+  }
+});
+
+function shutdown() {
+  httpServer.close(() => process.exit(0));
+  // Force exit if server hasn't closed within 2s
+  setTimeout(() => process.exit(0), 2000).unref();
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
