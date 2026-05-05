@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 
@@ -16,10 +16,7 @@ export default function Verify() {
 
   useEffect(() => {
     const token = searchParams.get('token');
-    if (!token) {
-      setError('Missing token in URL');
-      return;
-    }
+    if (!token) { setError('Missing token in URL'); return; }
 
     api.get<VerifyResponse>(`/api/auth/verify?token=${token}`)
       .then((res) => {
@@ -34,15 +31,33 @@ export default function Verify() {
   }, [searchParams, setAuth, navigate]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
-      <div className="text-center">
+    <div className="min-h-screen flex items-center justify-center relative" style={{ background: 'var(--bg)' }}>
+      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at 50% 40%, rgba(167,139,250,0.08) 0%, transparent 70%)' }} />
+
+      <div className="relative z-10 text-center">
         {error ? (
-          <>
-            <p className="text-lg font-medium mb-2" style={{ color: 'var(--danger)' }}>{error}</p>
-            <a href="/login" className="text-sm" style={{ color: 'var(--accent)' }}>Back to login</a>
-          </>
+          <div
+            className="rounded-3xl p-8 max-w-sm"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+          >
+            <div className="text-3xl mb-4">🔗</div>
+            <p className="font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Link expired or invalid</p>
+            <p className="text-sm mb-5" style={{ color: 'var(--text-secondary)' }}>{error}</p>
+            <Link
+              to="/login"
+              className="btn-glow text-white text-sm font-semibold px-6 py-2.5 rounded-full inline-block"
+            >
+              Back to login
+            </Link>
+          </div>
         ) : (
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Signing you in...</p>
+          <div className="flex flex-col items-center gap-3">
+            <div
+              className="w-12 h-12 rounded-full animate-pulse-glow"
+              style={{ background: 'linear-gradient(135deg, #a78bfa, #f472b6)' }}
+            />
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Signing you in...</p>
+          </div>
         )}
       </div>
     </div>

@@ -71,4 +71,27 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+// Resolve IMDB ID for a known TMDB item (used when adding popular/trending items)
+router.get('/enrich', async (req: Request, res: Response): Promise<void> => {
+  const tmdbId = req.query.tmdbId as string;
+  const mediaType = req.query.mediaType as string;
+
+  if (!tmdbId || !mediaType) {
+    res.status(400).json({ error: 'tmdbId and mediaType required' });
+    return;
+  }
+  if (!process.env.TMDB_API_KEY) {
+    res.status(500).json({ error: 'TMDB_API_KEY not configured' });
+    return;
+  }
+
+  try {
+    const extData = await tmdbGet(`/${mediaType}/${tmdbId}/external_ids`) as { imdb_id?: string };
+    res.json({ imdbId: extData.imdb_id || '' });
+  } catch (err) {
+    console.error('Enrich error:', err);
+    res.status(500).json({ error: 'Failed to fetch external IDs' });
+  }
+});
+
 export default router;

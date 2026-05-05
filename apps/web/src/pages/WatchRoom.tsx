@@ -5,42 +5,48 @@ import { useAuthStore } from '../store/authStore';
 import { useRoom, RoomUser } from '../hooks/useRoom';
 
 interface Room {
-  id: string;
-  coupleId: string;
-  imdbId: string;
-  mediaType: string;
-  season: number | null;
-  episode: number | null;
+  id: string; coupleId: string; imdbId: string;
+  mediaType: string; season: number | null; episode: number | null;
 }
 
 function getEmbedUrl(room: Room): string {
   if (room.mediaType === 'movie') {
     return `https://vidsrc.cc/embed/movie/${room.imdbId}?autoplay=0`;
   }
-  const s = room.season ?? 1;
-  const e = room.episode ?? 1;
-  return `https://vidsrc.cc/embed/tv/${room.imdbId}/${s}/${e}?autoplay=0`;
+  return `https://vidsrc.cc/embed/tv/${room.imdbId}/${room.season ?? 1}/${room.episode ?? 1}?autoplay=0`;
 }
 
-function StatusDot({ user }: { user: RoomUser }) {
-  let color = 'var(--text-secondary)';
-  if (user.connected && user.ready) color = 'var(--ready-green)';
-  else if (user.connected) color = 'var(--warning)';
+function UserSlot({ user, label }: { user: RoomUser | null; label: string }) {
+  const dotColor = !user || !user.connected
+    ? 'var(--text-muted)'
+    : user.ready ? 'var(--ready-green)' : 'var(--warning)';
+
+  const statusText = !user
+    ? 'Not joined'
+    : !user.connected ? 'Disconnected'
+    : user.ready ? 'Ready ✓'
+    : 'Here, not ready';
 
   return (
     <div
-      className="rounded-xl p-4 flex flex-col gap-2"
-      style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', minWidth: '140px' }}
+      className="flex flex-col items-center gap-2 px-5 py-3 rounded-2xl min-w-[120px]"
+      style={{
+        background: 'rgba(255,255,255,0.04)',
+        border: `1px solid ${user?.ready && user.connected ? 'rgba(74,222,128,0.25)' : 'rgba(255,255,255,0.07)'}`,
+        boxShadow: user?.ready && user.connected ? '0 0 20px rgba(74,222,128,0.1)' : 'none',
+        transition: 'all 0.3s ease',
+      }}
     >
-      <div className="flex items-center gap-2">
-        <div className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
-        <span className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-          {user.name}
+      <div className="flex items-center gap-1.5">
+        <div
+          className="w-2 h-2 rounded-full"
+          style={{ background: dotColor, boxShadow: user?.connected ? `0 0 6px ${dotColor}` : 'none' }}
+        />
+        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+          {user ? (label === 'You' ? 'You' : user.name) : label}
         </span>
       </div>
-      <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-        {!user.connected ? 'Disconnected' : user.ready ? 'Ready' : 'Not ready'}
-      </p>
+      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{statusText}</span>
     </div>
   );
 }
@@ -56,9 +62,7 @@ export default function WatchRoom() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const { roomState, partnerStatus, error: socketError, setReady } = useRoom(
-    roomId || '',
-    user?.id || '',
-    token || ''
+    roomId || '', user?.id || '', token || ''
   );
 
   useEffect(() => {
@@ -68,13 +72,21 @@ export default function WatchRoom() {
       .catch(() => setLoadError('Room not found'));
   }, [roomId]);
 
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === 'PLAYER_EVENT') { /* future sync hooks */ }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
   const toggleReady = () => {
     const next = !isReady;
     setIsReady(next);
     setReady(next);
   };
 
-  const copyRoomLink = () => {
+  const copyLink = () => {
     navigator.clipboard.writeText(window.location.href);
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);
@@ -82,94 +94,94 @@ export default function WatchRoom() {
 
   const canPlay = roomState?.canPlay ?? false;
   const users = roomState?.users ?? [];
-  const myUser = users.find((u) => u.userId === user?.id);
-  const partnerUser = users.find((u) => u.userId !== user?.id);
+  const myUser = users.find((u) => u.userId === user?.id) ?? null;
+  const partnerUser = users.find((u) => u.userId !== user?.id) ?? null;
   const partnerConnected = partnerUser?.connected ?? false;
 
-  const overlayMessage = (): string => {
-    if (!partnerUser || !partnerConnected) return 'Waiting for your partner to join...';
-    if (!myUser?.ready && !partnerUser.ready) return "Both here — tap Ready when you're set";
-    if (!myUser?.ready) return `${partnerUser.name} is ready — tap Ready to start`;
-    if (!partnerUser.ready) return `Waiting for ${partnerUser.name} to be ready...`;
-    return 'Starting...';
+  const overlayState = (): 'waiting-partner' | 'both-here' | 'partner-ready' | 'you-ready' | 'starting' => {
+    if (!partnerUser || !partnerConnected) return 'waiting-partner';
+    if (canPlay) return 'starting';
+    if (!myUser?.ready && !partnerUser.ready) return 'both-here';
+    if (partnerUser.ready && !myUser?.ready) return 'partner-ready';
+    return 'you-ready';
   };
 
-  const roomTitle = room
+  const overlayContent = () => {
+    const state = overlayState();
+    const pName = partnerUser?.name || 'your partner';
+    const map = {
+      'waiting-partner': { icon: '⏳', title: 'Waiting for your partner', sub: 'Share the room link so they can join.' },
+      'both-here':       { icon: '🎬', title: "You're both here!", sub: "Tap Ready when you're set to start." },
+      'partner-ready':   { icon: '✓', title: `${pName} is ready!`, sub: 'Tap Ready when you want to start.' },
+      'you-ready':       { icon: '⏳', title: `Waiting for ${pName}...`, sub: "They'll be ready soon." },
+      'starting':        { icon: '▶', title: 'Starting!', sub: '' },
+    };
+    return map[state];
+  };
+
+  const roomLabel = room
     ? room.mediaType === 'tv' && room.season && room.episode
       ? `S${room.season}E${room.episode}`
-      : ''
+      : 'Movie'
     : '';
-
-  useEffect(() => {
-    const handler = (e: MessageEvent) => {
-      if (e.data?.type === 'PLAYER_EVENT') {
-        const { event } = e.data.data || {};
-        if (event === 'play' && !canPlay) {
-          // overlay will re-appear automatically since canPlay is false
-        }
-      }
-    };
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
-  }, [canPlay]);
 
   if (loadError) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
-        <div className="text-center">
-          <p className="mb-4" style={{ color: 'var(--danger)' }}>{loadError}</p>
-          <Link to="/dashboard" style={{ color: 'var(--accent)' }}>Back to dashboard</Link>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
+        <div className="text-center p-8 rounded-3xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <p className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Room not found</p>
+          <Link to="/dashboard" className="text-sm" style={{ color: '#a78bfa' }}>Back to dashboard</Link>
         </div>
       </div>
     );
   }
 
+  const { icon, title, sub } = overlayContent();
+
   return (
-    <div className="flex flex-col h-screen" style={{ background: 'var(--bg-primary)' }}>
+    <div className="flex flex-col h-screen" style={{ background: '#07080f' }}>
+
       {/* Header */}
       <div
-        className="flex items-center justify-between px-4 py-3 shrink-0"
-        style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}
+        className="flex items-center justify-between px-5 py-3 shrink-0 z-20"
+        style={{ background: 'rgba(7,8,15,0.9)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
       >
-        <Link to="/dashboard" className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
-          TwoWatch
-        </Link>
-        {room && (
-          <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            {roomTitle}
+        <Link to="/dashboard" className="text-base font-bold gradient-text">TwoWatch</Link>
+        {roomLabel && (
+          <span className="text-sm px-3 py-1 rounded-full" style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}>
+            {roomLabel}
           </span>
         )}
         <button
           onClick={() => navigate('/dashboard')}
-          className="text-sm px-3 py-1.5 rounded-md"
-          style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+          className="text-sm px-4 py-1.5 rounded-full transition-all duration-150"
+          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-secondary)' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(248,113,113,0.15)'; (e.currentTarget as HTMLElement).style.color = '#f87171'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; }}
         >
           Leave
         </button>
       </div>
 
-      {/* Socket error banner */}
+      {/* Socket error */}
       {socketError && (
-        <div
-          className="px-4 py-2 text-sm text-center"
-          style={{ background: '#3a1a1a', color: 'var(--danger)', borderBottom: '1px solid var(--danger)' }}
-        >
-          Connection error: {socketError}. Are both accounts in the same couple?
+        <div className="px-5 py-2 text-sm text-center z-20" style={{ background: 'rgba(248,113,113,0.15)', color: 'var(--danger)', borderBottom: '1px solid rgba(248,113,113,0.2)' }}>
+          {socketError}
         </div>
       )}
 
-      {/* Partner status toast */}
+      {/* Partner toast */}
       {partnerStatus && (
         <div
-          className="fixed top-16 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm z-50"
+          className="fixed top-16 left-1/2 -translate-x-1/2 px-5 py-2.5 rounded-full text-sm font-medium z-50 transition-all"
           style={{
-            background: partnerStatus.type === 'disconnected' ? 'var(--danger)' : 'var(--success)',
+            background: partnerStatus.type === 'disconnected' ? 'rgba(248,113,113,0.9)' : 'rgba(74,222,128,0.9)',
             color: 'white',
+            boxShadow: '0 8px 30px rgba(0,0,0,0.4)',
+            backdropFilter: 'blur(12px)',
           }}
         >
-          {partnerStatus.type === 'disconnected'
-            ? `${partnerStatus.name} disconnected`
-            : `${partnerStatus.name} rejoined`}
+          {partnerStatus.type === 'disconnected' ? `${partnerStatus.name} disconnected` : `${partnerStatus.name} rejoined ♥`}
         </div>
       )}
 
@@ -189,29 +201,34 @@ export default function WatchRoom() {
         {/* Overlay */}
         {!canPlay && (
           <div
-            className="absolute inset-0 flex flex-col items-center justify-center z-10"
-            style={{ background: 'rgba(10,10,15,0.92)', backdropFilter: 'blur(4px)' }}
+            className="absolute inset-0 flex flex-col items-center justify-center z-10 transition-opacity duration-300"
+            style={{ background: 'rgba(7,8,15,0.88)', backdropFilter: 'blur(8px)' }}
           >
-            <div className="text-center max-w-sm px-6">
-              <div className="text-4xl mb-4">
-                {!partnerConnected ? '⏳' : myUser?.ready && partnerUser?.ready ? '▶' : '🎬'}
+            {/* Glow */}
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(167,139,250,0.08) 0%, transparent 100%)' }}
+            />
+
+            <div className="relative z-10 text-center px-8 max-w-sm">
+              <div
+                className="w-20 h-20 rounded-full flex items-center justify-center text-3xl mx-auto mb-5"
+                style={{ background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.2)' }}
+              >
+                {icon}
               </div>
-              <p className="text-base font-medium mb-2" style={{ color: 'var(--text-primary)' }}>
-                {overlayMessage()}
-              </p>
-              {!partnerConnected && (
-                <div className="mt-4 flex flex-col items-center gap-3">
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                    Send this link to your partner — they must be signed in to your couple.
-                  </p>
+              <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>{title}</h2>
+              {sub && <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{sub}</p>}
+
+              {overlayState() === 'waiting-partner' && (
+                <div className="mt-5 flex flex-col items-center gap-3">
                   <button
-                    onClick={copyRoomLink}
-                    className="text-sm px-4 py-2 rounded-lg font-medium"
-                    style={{ background: 'var(--accent)', color: 'white' }}
+                    onClick={copyLink}
+                    className="btn-glow text-white text-sm font-semibold px-6 py-2.5 rounded-full"
                   >
-                    {linkCopied ? 'Copied!' : 'Copy room link'}
+                    {linkCopied ? '✓ Copied!' : 'Copy room link'}
                   </button>
-                  <p className="text-xs font-mono px-3 py-1.5 rounded-md break-all" style={{ background: 'var(--bg-card)', color: 'var(--text-secondary)', border: '1px solid var(--border)', maxWidth: '300px' }}>
+                  <p className="text-xs font-mono px-3 py-2 rounded-xl break-all" style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text-muted)', border: '1px solid rgba(255,255,255,0.06)', maxWidth: '300px' }}>
                     {window.location.href}
                   </p>
                 </div>
@@ -223,44 +240,44 @@ export default function WatchRoom() {
 
       {/* Bottom controls */}
       <div
-        className="shrink-0 px-4 py-4"
-        style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)' }}
+        className="shrink-0 px-5 py-4 z-20"
+        style={{ background: 'rgba(7,8,15,0.9)', backdropFilter: 'blur(20px)', borderTop: '1px solid rgba(255,255,255,0.06)' }}
       >
-        <div className="max-w-2xl mx-auto flex flex-col gap-4">
+        <div className="max-w-lg mx-auto flex flex-col gap-4">
+          {/* User slots */}
           <div className="flex gap-3 justify-center flex-wrap">
-            {myUser && <StatusDot user={{ ...myUser, name: 'You' }} />}
-            {partnerUser ? (
-              <StatusDot user={partnerUser} />
-            ) : (
-              <div
-                className="rounded-xl p-4 flex flex-col gap-2"
-                style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', minWidth: '140px' }}
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full" style={{ background: 'var(--text-secondary)' }} />
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Partner</span>
-                </div>
-                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Not joined yet</p>
-              </div>
-            )}
+            <UserSlot user={myUser} label="You" />
+            <UserSlot user={partnerUser} label="Partner" />
           </div>
 
+          {/* Ready button */}
           <button
             onClick={toggleReady}
             disabled={!partnerConnected}
-            className="w-full py-3 rounded-xl font-semibold text-base disabled:opacity-40 transition-colors"
-            style={{
-              background: isReady ? 'var(--bg-card)' : 'var(--accent)',
-              color: isReady ? 'var(--text-secondary)' : 'white',
-              border: isReady ? '1px solid var(--border)' : 'none',
+            className="w-full py-3.5 rounded-2xl font-semibold text-base disabled:opacity-30 transition-all duration-200"
+            style={isReady ? {
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              color: 'var(--text-secondary)',
+            } : {
+              background: 'linear-gradient(135deg, #a78bfa, #f472b6)',
+              boxShadow: '0 0 30px rgba(167,139,250,0.35)',
+              color: 'white',
+              border: 'none',
+            }}
+            onMouseEnter={(e) => {
+              if (!isReady && partnerConnected) (e.currentTarget as HTMLElement).style.boxShadow = '0 0 50px rgba(167,139,250,0.5)';
+            }}
+            onMouseLeave={(e) => {
+              if (!isReady) (e.currentTarget as HTMLElement).style.boxShadow = '0 0 30px rgba(167,139,250,0.35)';
             }}
           >
             {isReady ? '✗ Not ready' : '✓ I\'m Ready'}
           </button>
 
           {!partnerConnected && (
-            <p className="text-center text-xs" style={{ color: 'var(--text-secondary)' }}>
-              Waiting for your partner to connect before you can get ready
+            <p className="text-center text-xs" style={{ color: 'var(--text-muted)' }}>
+              Waiting for your partner to connect
             </p>
           )}
         </div>
